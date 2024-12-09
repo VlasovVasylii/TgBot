@@ -54,10 +54,10 @@ async def register_user(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.callback_query(F.data.in_({"student", "tutor", "admin"}))
+@router.callback_query(F.data.in_({"_student", "_tutor", "_admin"}))
 async def set_user_role(call: CallbackQuery, state: FSMContext):
     """Установка роли пользователя."""
-    role = call.data
+    role = call.data.split('_')[1]
     await state.update_data(role=role)
     await state.set_state(RegistrationState.waiting_for_full_name)
     await call.message.edit_text("✍️ Введите ваше полное имя:")

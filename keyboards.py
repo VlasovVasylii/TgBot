@@ -28,37 +28,29 @@ student_menu = InlineKeyboardMarkup(inline_keyboard=[
 
 # Меню для преподавателей
 tutor_menu = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="📈 Панель репетитора", callback_data="tutor_panel")],
-    [InlineKeyboardButton(text="📅 Предстоящие занятия", callback_data="upcoming_classes")],
-    [InlineKeyboardButton(text="📝 Генерация тестов", callback_data="generate_test")],
+    [InlineKeyboardButton(text="📅 Предстоящие занятия", callback_data="upcoming_classes"),
+     InlineKeyboardButton(text="📝 Генерация тестов", callback_data="generate_test")],
+    [InlineKeyboardButton(text="⭐ Высокий рейтинг", callback_data="reviews_high_rating"),
+     InlineKeyboardButton(text="⭐ Низкий рейтинг", callback_data="reviews_low_rating")],
     [InlineKeyboardButton(text="📊 Аналитика преподавателя", callback_data="tutor_analytics"),
      InlineKeyboardButton(text="ℹ️ Помощь", callback_data="help")]
 ])
 
 # Меню администратора
 admin_menu = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👨‍🏫 Управление репетиторами", callback_data="manage_tutors")],
-        [InlineKeyboardButton(text="👥 Управление пользователями", callback_data="manage_users")],
-        [InlineKeyboardButton(text="⭐ Управление отзывами", callback_data="manage_feedbacks")],
-        [InlineKeyboardButton(text="📅 Управление занятиями", callback_data="manage_bookings")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")]
-    ])
-
-
-def generate_tutor_panel_keyboard():
-    """Клавиатура панели репетитора."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⭐ Высокий рейтинг", callback_data="reviews_high_rating"),
-         InlineKeyboardButton(text="⭐ Низкий рейтинг", callback_data="reviews_low_rating")],
-        [InlineKeyboardButton(text="📅 Предстоящие занятия", callback_data="upcoming_classes")],
-        [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="main_menu")]
-    ])
+    [InlineKeyboardButton(text="👨‍🏫 Управление репетиторами", callback_data="manage_tutors")],
+    [InlineKeyboardButton(text="👥 Управление пользователями", callback_data="manage_users")],
+    [InlineKeyboardButton(text="⭐ Управление отзывами", callback_data="manage_feedbacks")],
+    [InlineKeyboardButton(text="📅 Управление занятиями", callback_data="manage_bookings")],
+    [InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")]
+])
 
 
 def generate_tutor_keyboard(tutors, only_id=False):
     """Генерация клавиатуры с репетиторами и кнопкой назад."""
     buttons = [
-        InlineKeyboardButton(text=f"{name}{'' if only_id else 'Отзывы'}", callback_data=f"{'pick_tutor' if only_id else 'view_tutor_feedback'}_{tutor_id}")
+        InlineKeyboardButton(text=f"{name}{'' if only_id else ' (Отзывы)'}",
+                             callback_data=f"{'pick_tutor' if only_id else 'view_tutor_feedback'}_{tutor_id}")
         for tutor_id, name in tutors
     ]
     # Добавляем кнопки на клавиатуру
@@ -104,9 +96,9 @@ def generate_confirm_booking_keyboard():
 # Выбор роли при регистрации
 def generate_role_selection_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👨‍🎓 Студент", callback_data="student")],
-        [InlineKeyboardButton(text="👨‍🏫 Репетитор", callback_data="tutor")],
-        [InlineKeyboardButton(text="🛠 Админ", callback_data="admin")],
+        [InlineKeyboardButton(text="👨‍🎓 Студент", callback_data="_student")],
+        [InlineKeyboardButton(text="👨‍🏫 Репетитор", callback_data="_tutor")],
+        [InlineKeyboardButton(text="🛠 Админ", callback_data="_admin")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")]
     ])
 

@@ -16,8 +16,10 @@ async def tutor_panel(call: CallbackQuery):
     """Панель репетитора."""
     user_role = get_user_role(call.from_user.id)
     if user_role != "tutor":
-        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для преподавателей.",
-                                     reply_markup=main_menu)
+        await call.message.edit_text(
+            "❌ Доступ запрещён. Эта функция доступна только для преподавателей.",
+            reply_markup=main_menu
+        )
         await call.answer()
         return
 
@@ -29,34 +31,46 @@ async def tutor_panel(call: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("reviews_"))
-async def filtered_reviews(call: CallbackQuery):
-    """Фильтрация отзывов."""
+async def filter_reviews(call: CallbackQuery):
+    """Фильтрация отзывов преподавателя."""
     user_role = get_user_role(call.from_user.id)
     if user_role != "tutor":
-        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.message.edit_text(
+            "❌ Доступ запрещён. Эта функция доступна только для преподавателей.",
+            reply_markup=generate_back_button()
+        )
         await call.answer()
         return
 
-    tutor_contact = f"@{call.from_user.username}"
-    tutor = execute_query("SELECT id FROM tutors WHERE contact = ?", (tutor_contact,), fetchone=True)
+    tutor = execute_query(
+        "SELECT id FROM tutors WHERE id = ?", (call.from_user.id,), fetchone=True
+    )
+
+    if not tutor:
+        await call.message.edit_text(
+            "❌ Вы не зарегистрированы как преподаватель.",
+            reply_markup=generate_back_button()
+        )
+        return
 
     tutor_id = tutor[0]
-    filter_type = call.data.split("_")[1]
-    query = "SELECT student_name, rating, comment FROM feedback WHERE tutor_id = ?"
-    params = [tutor_id]
+    filter_type = call.data.split("_")[2]
 
     if filter_type == "high_rating":
-        query += " AND rating >= 4"
+        query = "SELECT student_name, rating, comment FROM feedback WHERE tutor_id = ? AND rating >= 4"
     elif filter_type == "low_rating":
-        query += " AND rating <= 3"
-
-    feedbacks = execute_query(query, params, fetchall=True)
-    if feedbacks:
-        response = "📊 Ваши отзывы:\n\n"
-        for student_name, rating, comment in feedbacks:
-            response += f"⭐ {rating} от {student_name}: {comment}\n"
+        query = "SELECT student_name, rating, comment FROM feedback WHERE tutor_id = ? AND rating <= 3"
     else:
-        response = "❌ Отзывы по выбранному фильтру отсутствуют."
+        query = "SELECT student_name, rating, comment FROM feedback WHERE tutor_id = ?"
+
+    feedbacks = execute_query(query, (tutor_id,), fetchall=True)
+
+    if feedbacks:
+        response = "📊 Отзывы:\n\n"
+        for student_name, rating, comment in feedbacks:
+            response += f"👤 {student_name}\n⭐ {rating}\n💬 {comment}\n\n"
+    else:
+        response = "❌ Нет отзывов по выбранному фильтру."
 
     await call.message.edit_text(response, reply_markup=generate_back_button())
     await call.answer()
@@ -65,77 +79,42 @@ async def filtered_reviews(call: CallbackQuery):
 @router.callback_query(F.data == "upcoming_classes")
 async def view_upcoming_classes(call: CallbackQuery):
     """Просмотр предстоящих занятий репетитора."""
+    # Проверка роли пользователя
     user_role = get_user_role(call.from_user.id)
     if user_role != "tutor":
-        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.message.edit_text(
+            "❌ Доступ запрещён. Эта функция доступна только для преподавателей.",
+            reply_markup=main_menu
+        )
         await call.answer()
         return
 
-    tutor_contact = f"@{call.from_user.username}"
-    tutor = execute_query("SELECT id FROM tutors WHERE contact = ?", (tutor_contact,), fetchone=True)
+    # Получение данных репетитора
+    tutor = execute_query(
+        "SELECT id, name FROM tutors WHERE id = ?", (call.from_user.id,), fetchone=True
+    )
+
+    if not tutor:
+        await call.message.edit_text(
+            "❌ Вы не зарегистрированы как преподаватель.",
+            reply_markup=main_menu
+        )
+        return
 
     tutor_id = tutor[0]
-    upcoming_classes_ = execute_query("""
+    upcoming_classes = execute_query("""
         SELECT student_name, date, time, comment
         FROM bookings
         WHERE tutor_id = ? AND status IN ('pending', 'approved')
         ORDER BY date, time
     """, (tutor_id,), fetchall=True)
 
-    if upcoming_classes_:
+    if upcoming_classes:
         response = "📅 Ваши предстоящие занятия:\n\n"
-        for student_name, date, time, comment in upcoming_classes_:
+        for student_name, date, time, comment in upcoming_classes:
             response += f"👩‍🎓 {student_name}: {date} в {time}\n💬 {comment}\n\n"
     else:
         response = "❌ У вас нет предстоящих занятий."
-
-    await call.message.edit_text(response, reply_markup=generate_back_button())
-    await call.answer()
-
-
-@router.callback_query(F.data.startswith("filter_reviews_"))
-async def filter_reviews(call: CallbackQuery):
-    """Фильтрация отзывов."""
-    user_role = get_user_role(call.from_user.id)
-    if user_role != "tutor":
-        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
-        await call.answer()
-        return
-
-    tutor_contact = f"@{call.from_user.username}"
-    tutor = execute_query("SELECT id FROM tutors WHERE contact = ?", (tutor_contact,), fetchone=True)
-
-    tutor_id = tutor[0]
-    filter_type = call.data.split("_")[2]  # Получение типа фильтра
-
-    # Формирование SQL-запроса в зависимости от типа фильтра
-    if filter_type == "high_rating":
-        query = """
-            SELECT student_name, rating, comment
-            FROM feedback
-            WHERE tutor_id = ? AND rating >= 4
-        """
-    elif filter_type == "low_rating":
-        query = """
-            SELECT student_name, rating, comment
-            FROM feedback
-            WHERE tutor_id = ? AND rating <= 3
-        """
-    else:
-        query = """
-            SELECT student_name, rating, comment
-            FROM feedback
-            WHERE tutor_id = ?
-        """
-
-    feedbacks = execute_query(query, (tutor_id,), fetchall=True)
-
-    if feedbacks:
-        response = "📊 Ваши отзывы:\n\n"
-        for student_name, rating, comment in feedbacks:
-            response += f"👤 {student_name}\n⭐ {rating}\n💬 {comment}\n\n"
-    else:
-        response = "❌ Отзывы по выбранному фильтру отсутствуют."
 
     await call.message.edit_text(response, reply_markup=generate_back_button())
     await call.answer()
