@@ -8,12 +8,12 @@ from keyboards import generate_role_selection_keyboard, generate_back_button
 router = Router()
 
 
-@router.message(F.text.startswith("/register"))
-async def start_registration(message: Message, state: FSMContext):
+@router.callback_query(F.data == "register")
+async def register_user(call: CallbackQuery, state: FSMContext):
     """Начало процесса регистрации."""
     await state.clear()
-    await state.set_state(RegistrationState.waiting_for_role)
-    await message.reply("👥 Выберите вашу роль:", reply_markup=generate_role_selection_keyboard())
+    await call.message.edit_text("👥 Выберите вашу роль:", reply_markup=generate_role_selection_keyboard())
+    await call.answer()
 
 
 @router.callback_query(F.data.in_({"student", "tutor"}))

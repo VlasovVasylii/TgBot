@@ -9,14 +9,14 @@ def init_db():
     cursor = conn.cursor()
 
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY,
-        full_name TEXT NOT NULL,
-        role TEXT NOT NULL CHECK(role IN ('student', 'tutor', 'admin')),
-        username TEXT,
-        contact TEXT
-    )
-    """)
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY,
+            full_name TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('student', 'tutor', 'admin')),  -- Добавили 'admin'
+            username TEXT,
+            contact TEXT
+        )
+        """)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS tutors (
@@ -43,16 +43,18 @@ def init_db():
     )
     """)
 
+    # Таблица отзывов
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS feedback (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        tutor_id INTEGER NOT NULL,
-        student_name TEXT NOT NULL,
-        rating INTEGER NOT NULL,
-        comment TEXT,
-        FOREIGN KEY (tutor_id) REFERENCES tutors (id)
-    )
-    """)
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tutor_id INTEGER NOT NULL,
+            student_name TEXT NOT NULL,
+            student_contact TEXT NOT NULL,
+            rating INTEGER NOT NULL,
+            comment TEXT,
+            FOREIGN KEY (tutor_id) REFERENCES tutors (id)
+        )
+        """)
     conn.commit()
     conn.close()
 
@@ -77,14 +79,35 @@ def execute_query(query, params=(), fetchone=False, fetchall=False):
         conn.close()
 
 
-def seed_test_data():
-    """Заполнение базы данных тестовыми данными."""
-    tutors = [
-        ("Иван Иванов", "Математика", "@ivan_tutor", 4.5),
-        ("Анна Смирнова", "Физика", "@anna_tutor", 5.0)
-    ]
+def seed_mock_data():
+    # Добавление пользователей
+    execute_query("""
+        INSERT INTO users (id, full_name, role, contact)
+        VALUES
+        (1, 'Тестовый Студент', 'student', 'student_contact'),
+        (2, 'Тестовый Администратор', 'admin', 'admin_contact')
+    """)
 
-    for tutor in tutors:
-        existing_tutor = execute_query("SELECT id FROM tutors WHERE contact = ?", (tutor[2],), fetchone=True)
-        if not existing_tutor:
-            execute_query("INSERT INTO tutors (name, subject, contact, rating) VALUES (?, ?, ?, ?)", tutor)
+    # Добавление репетиторов
+    execute_query("""
+        INSERT INTO tutors (name, subject, contact, rating, feedback_count)
+        VALUES
+        ('Репетитор Иван', 'Математика', '@ivan_tutor', 4.5, 2),
+        ('Репетитор Анна', 'Физика', '@anna_tutor', 5.0, 1)
+    """)
+
+    # Добавление бронирований
+    execute_query("""
+        INSERT INTO bookings (tutor_id, student_name, student_contact, date, time, comment, status)
+        VALUES
+        (1, 'Тестовый Студент', 'student_contact', '2024-12-15', '15:00', 'Подготовка к экзамену', 'pending'),
+        (2, 'Тестовый Студент', 'student_contact', '2024-12-16', '14:00', 'Подготовка к ЕГЭ', 'approved')
+    """)
+
+    # Добавление отзывов
+    execute_query("""
+        INSERT INTO feedback (tutor_id, student_name, student_contact, rating, comment)
+        VALUES
+        (1, 'Тестовый Студент', 'student_contact', 5, 'Отличный преподаватель!'),
+        (2, 'Тестовый Студент', 'student_contact', 4, 'Хорошо объясняет.')
+    """)

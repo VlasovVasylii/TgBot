@@ -155,7 +155,7 @@ async def view_tutor_feedback(call: CallbackQuery):
     """, (tutor_id,), fetchall=True)
 
     if feedbacks:
-        response = f"📋 Отзывы о репетиторе (ID: {tutor_id}):\n\n"
+        response = f"📋 Отзывы о репетиторе:\n\n"
         for student_name, rating, comment in feedbacks:
             response += f"👤 {student_name}\n⭐ {rating}\n💬 {comment}\n\n"
     else:

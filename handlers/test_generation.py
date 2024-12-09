@@ -30,7 +30,7 @@ async def generate_test_for_topic(message: Message, state: FSMContext):
     except Exception as e:
         await state.clear()
         await message.reply(f"❌ Ошибка генерации теста: {e}")
-    await send_main_menu(message)
+    await send_main_menu(message, state)
 
 
 def register_handlers_test_generation(dp):

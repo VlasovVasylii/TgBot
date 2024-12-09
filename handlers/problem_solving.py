@@ -30,7 +30,7 @@ async def solve_user_problem(message: Message, state: FSMContext):
     except Exception as e:
         await state.clear()
         await message.reply(f"❌ Ошибка при решении задачи: {e}")
-    await send_main_menu(message)
+    await send_main_menu(message, state)
 
 
 def register_handlers_problem_solving(dp):

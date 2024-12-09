@@ -1,4 +1,5 @@
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
 
 # Главное меню
 main_menu = InlineKeyboardMarkup(inline_keyboard=[
@@ -22,6 +23,21 @@ main_menu = InlineKeyboardMarkup(inline_keyboard=[
         InlineKeyboardButton(text="📖 Забронировать занятие", callback_data="book"),
         InlineKeyboardButton(text="📋 Просмотреть отзывы", callback_data="view_feedback")
     ]
+])
+
+
+# Меню для студентов
+student_menu = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="🔍 Найти репетитора", callback_data="find_tutor")],
+    [InlineKeyboardButton(text="📅 Календарь занятий", callback_data="calendar")],
+    [InlineKeyboardButton(text="📝 Оставить отзыв", callback_data="feedback")]
+])
+
+
+# Меню для преподавателей
+tutor_menu = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="📈 Панель репетитора", callback_data="tutor_panel")],
+    [InlineKeyboardButton(text="📅 Предстоящие занятия", callback_data="upcoming_classes")]
 ])
 
 
@@ -60,13 +76,18 @@ def generate_feedback_keyboard(feedback_id):
     ])
 
 
-# Список репетиторов
 def generate_tutor_keyboard(tutors):
-    """Клавиатура с репетиторами и возможностью просмотра их отзывов."""
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    for tutor_id, name in tutors:
-        keyboard.add(InlineKeyboardButton(text=f"{name} (Отзывы)", callback_data=f"view_tutor_feedback_{tutor_id}"))
-    keyboard.add(InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu"))
+    """Генерация клавиатуры с репетиторами и кнопкой назад."""
+    ikb = []
+    buttons = [
+        InlineKeyboardButton(text=f"{name} (Отзывы)", callback_data=f"view_tutor_feedback_{tutor_id}")
+        for tutor_id, name in tutors
+    ]
+    # Добавляем кнопки на клавиатуру
+    ikb = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+    # Кнопка "Назад"
+    ikb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=ikb, row_width=2)
     return keyboard
 
 
@@ -80,9 +101,8 @@ def generate_confirm_booking_keyboard():
     ])
 
 
-# Выбор роли
+# Выбор роли при регистрации
 def generate_role_selection_keyboard():
-    """Клавиатура для выбора роли при регистрации."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👨‍🎓 Студент", callback_data="student")],
         [InlineKeyboardButton(text="👨‍🏫 Репетитор", callback_data="tutor")],

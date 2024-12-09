@@ -1,16 +1,21 @@
 import requests
 import re
+
 from config import OPENAI_API_KEY
 
-BASE_URL = "https://api.openai.com/v1/chat/completions"
+BASE_URL = "https://api.pawan.krd/v1/chat/completions"
 
 
 def get_response(messages):
-    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
     payload = {
-        "model": "gpt-3.5-turbo",
+        "model": "pai-001",
         "messages": messages,
-        "temperature": 0.7
+        "temperature": 0.7,
+        "max_tokens": 8192
     }
     response = requests.post(BASE_URL, json=payload, headers=headers)
     if response.status_code == 200:

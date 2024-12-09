@@ -26,7 +26,7 @@ async def start_booking(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-@router.callback_query(F.data.startswith("tutor_"))
+@router.callback_query(BookingState.waiting_for_tutor_id)
 async def handle_tutor_selection(call: CallbackQuery, state: FSMContext):
     """Обработка выбора репетитора."""
     tutor_id = call.data.split("_")[1]
@@ -41,7 +41,7 @@ async def handle_tutor_selection(call: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(SimpleCalendarCallback.filter())
-async def process_calendar(call: CallbackQuery, callback_data: dict, state: FSMContext):
+async def process_calendar(call: CallbackQuery, callback_data: SimpleCalendarCallback, state: FSMContext):
     """Обработка выбора даты."""
     result, key, step = await SimpleCalendar().process_selection(call, callback_data)
     if result:
