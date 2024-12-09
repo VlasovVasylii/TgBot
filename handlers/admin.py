@@ -1,8 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from db import execute_query
-from keyboards import generate_admin_panel_keyboard, generate_back_button
-from config import ADMIN_IDS
+from keyboards import admin_menu, generate_back_button, main_menu
 
 router = Router()
 
@@ -12,14 +11,20 @@ async def admin_panel(call: CallbackQuery):
     """
     Панель администратора. Проверяет права доступа по ID пользователя.
     """
-    if str(call.from_user.id) not in ADMIN_IDS:
-        await call.message.edit_text("❌ У вас нет доступа к панели администратора.")
+    # Проверка на наличие пользователя в таблице администраторов
+    admin = execute_query(
+        "SELECT name FROM admins WHERE id = ?", (call.from_user.id,), fetchone=True
+    )
+
+    if not admin:
+        await call.message.edit_text("❌ У вас нет доступа к панели администратора.",
+                                     reply_markup=main_menu)
         await call.answer()
         return
 
     await call.message.edit_text(
-        "📋 Добро пожаловать в панель администратора:",
-        reply_markup=generate_admin_panel_keyboard()
+        f"📋 Добро пожаловать в панель администратора, {admin[0]}:",
+        reply_markup=admin_menu
     )
     await call.answer()
 
@@ -33,7 +38,7 @@ async def manage_tutors(call: CallbackQuery):
         response = "👨‍🏫 Список репетиторов:\n\n"
         for tutor_id, name, subject, rating in tutors:
             response += f"ID: {tutor_id}\nИмя: {name}\nПредмет: {subject}\nРейтинг: {rating:.1f}\n\n"
-        await call.message.edit_text(response, reply_markup=generate_admin_panel_keyboard())
+        await call.message.edit_text(response, reply_markup=admin_menu)
     else:
         await call.message.edit_text("❌ Репетиторы отсутствуют.", reply_markup=generate_back_button())
     await call.answer()
@@ -42,15 +47,26 @@ async def manage_tutors(call: CallbackQuery):
 @router.callback_query(F.data == "manage_users")
 async def manage_users(call: CallbackQuery):
     """Управление пользователями."""
-    users = execute_query("SELECT id, full_name, role FROM users", fetchall=True)
+    # Извлекаем студентов и преподавателей из соответствующих таблиц
+    students = execute_query("SELECT id, full_name, contact FROM students", fetchall=True)
+    tutors = execute_query("SELECT id, name, subject, contact FROM tutors", fetchall=True)
 
-    if users:
-        response = "👥 Список пользователей:\n\n"
-        for user_id, full_name, role in users:
-            response += f"ID: {user_id}\nИмя: {full_name}\nРоль: {'Студент' if role == 'student' else 'Репетитор'}\n\n"
-        await call.message.edit_text(response, reply_markup=generate_admin_panel_keyboard())
-    else:
-        await call.message.edit_text("❌ Пользователи отсутствуют.", reply_markup=generate_back_button())
+    response = "👥 Список пользователей:\n\n"
+
+    if students:
+        response += "👨‍🎓 Студенты:\n"
+        for student_id, full_name, contact in students:
+            response += f"ID: {student_id}\nИмя: {full_name}\nКонтакт: {contact}\n\n"
+
+    if tutors:
+        response += "👨‍🏫 Преподаватели:\n"
+        for tutor_id, name, subject, contact in tutors:
+            response += f"ID: {tutor_id}\nИмя: {name}\nПредмет: {subject}\nКонтакт: {contact}\n\n"
+
+    if not students and not tutors:
+        response = "❌ Пользователи отсутствуют."
+
+    await call.message.edit_text(response, reply_markup=admin_menu)
     await call.answer()
 
 
@@ -71,7 +87,7 @@ async def manage_feedbacks(call: CallbackQuery):
                 f"Репетитор: {tutor_name}\nСтудент: {student_name}\n"
                 f"Рейтинг: {rating}\nКомментарий: {comment}\n\n"
             )
-        await call.message.edit_text(response, reply_markup=generate_admin_panel_keyboard())
+        await call.message.edit_text(response, reply_markup=admin_menu)
     else:
         await call.message.edit_text("❌ Отзывы отсутствуют.", reply_markup=generate_back_button())
     await call.answer()
@@ -94,7 +110,7 @@ async def manage_bookings(call: CallbackQuery):
                 f"Репетитор: {tutor_name}\n"
                 f"Студент: {student_name}\nДата: {date}, время: {time}\nСтатус: {status}\n\n"
             )
-        await call.message.edit_text(response, reply_markup=generate_admin_panel_keyboard())
+        await call.message.edit_text(response, reply_markup=admin_menu)
     else:
         await call.message.edit_text("❌ Занятия отсутствуют.", reply_markup=generate_back_button())
     await call.answer()

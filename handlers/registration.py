@@ -3,7 +3,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from states import RegistrationState
 from db import execute_query
-from keyboards import generate_role_selection_keyboard, generate_back_button, student_menu, tutor_menu
+from keyboards import generate_role_selection_keyboard, generate_back_button, student_menu, tutor_menu, admin_menu
 
 router = Router()
 
@@ -15,42 +15,46 @@ async def register_user(call: CallbackQuery, state: FSMContext):
     Проверяет, есть ли пользователь в БД, и отображает соответствующую информацию.
     """
     user_id = call.from_user.id
-    user_data = execute_query("""
-        SELECT role, full_name
-        FROM users
-        WHERE id = ?
-    """, (user_id,), fetchone=True)
 
-    if user_data:
-        role, full_name = user_data
-        if role == "student":
-            menu = student_menu
-            role_name = "Студент"
-        elif role == "tutor":
-            menu = tutor_menu
-            role_name = "Репетитор"
-        else:
-            menu = generate_back_button()
-            role_name = "Неизвестный"
+    existing_admin = execute_query(
+        "SELECT name FROM admins WHERE id = ?", (user_id,), fetchone=True
+    )
+    existing_tutor = execute_query(
+        "SELECT name FROM tutors WHERE id = ?", (user_id,), fetchone=True
+    )
+    existing_student = execute_query(
+        "SELECT full_name FROM students WHERE id = ?", (user_id,), fetchone=True
+    )
 
-        # Сообщение для зарегистрированных пользователей
+    if existing_student:
         await call.message.edit_text(
-            f"✅ Вы уже зарегистрированы!\n"
-            f"👤 Имя: {full_name}\n"
-            f"📋 Статус: {role_name}",
-            reply_markup=menu
+            f"❌ Вы уже зарегистрированы!\n"
+            f"👤 Имя: {existing_student[0]}\n"
+            f"📋 Статус: Студент",
+            reply_markup=student_menu
+        )
+    elif existing_tutor:
+        await call.message.edit_text(
+            f"❌ Вы уже зарегистрированы!\n"
+            f"👤 Имя: {existing_tutor[0]}\n"
+            f"📋 Статус: Репетитор",
+            reply_markup=tutor_menu
+        )
+    elif existing_admin:
+        await call.message.edit_text(
+            f"❌ Вы уже зарегистрированы!\n"
+            f"👤 Имя: {existing_admin[0]}\n"
+            f"📋 Статус: Администратор",
+            reply_markup=admin_menu
         )
     else:
-        # Сообщение для незарегистрированных пользователей
-        await call.message.edit_text(
-            "👋 Вы ещё не зарегистрированы. Пожалуйста, пройдите регистрацию."
-        )
-    await state.clear()
-    await call.message.edit_text("👥 Выберите вашу роль:", reply_markup=generate_role_selection_keyboard())
+        await call.message.edit_text("👋 Вы ещё не зарегистрированы. Пожалуйста, пройдите регистрацию.")
+        await state.set_state(RegistrationState.waiting_for_role)
+        await call.message.edit_text("👥 Выберите вашу роль:", reply_markup=generate_role_selection_keyboard())
     await call.answer()
 
 
-@router.callback_query(F.data.in_({"student", "tutor"}))
+@router.callback_query(F.data.in_({"student", "tutor", "admin"}))
 async def set_user_role(call: CallbackQuery, state: FSMContext):
     """Установка роли пользователя."""
     role = call.data
@@ -70,6 +74,14 @@ async def set_user_full_name(message: Message, state: FSMContext):
     if data["role"] == "tutor":
         await state.set_state(RegistrationState.waiting_for_subject)
         await message.reply("📚 Укажите предмет, который вы преподаёте:")
+    elif data["role"] == "admin":
+        execute_query("""
+            INSERT INTO admins (id, name)
+            VALUES (?, ?)
+        """, (message.from_user.id, full_name))
+        await state.clear()
+        await message.reply("✅ Регистрация завершена! Вы зарегистрированы как Администратор.",
+                            reply_markup=generate_back_button())
     else:
         await state.set_state(RegistrationState.waiting_for_contact)
         await message.reply("📞 Введите ваш контакт (например, номер телефона):")
@@ -96,19 +108,20 @@ async def save_user_data(message: Message, state: FSMContext):
     if role == "tutor":
         subject = data["subject"]
         execute_query("""
-        INSERT INTO tutors (id, name, subject, contact)
-        VALUES (?, ?, ?, ?)
+            INSERT INTO tutors (id, name, subject, contact)
+            VALUES (?, ?, ?, ?)
         """, (message.from_user.id, full_name, subject, contact))
     else:
         execute_query("""
-        INSERT INTO students (id, full_name, contact)
-        VALUES (?, ?, ?)
+            INSERT INTO students (id, full_name, contact)
+            VALUES (?, ?, ?)
         """, (message.from_user.id, full_name, contact))
 
     await state.clear()
     await message.reply(
-        f"✅ Регистрация завершена! Вы зарегистрированы как {'репетитор' if role == 'tutor' else 'студент'}.",
-        reply_markup=generate_back_button())
+        f"✅ Регистрация завершена! Вы зарегистрированы как {'Репетитор' if role == 'tutor' else 'Студент'}.",
+        reply_markup=generate_back_button()
+    )
 
 
 def register_handlers_registration(dp):

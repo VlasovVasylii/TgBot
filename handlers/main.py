@@ -66,7 +66,7 @@ async def help_handler(call: CallbackQuery):
         "🛠 Для администраторов — кнопка для перехода к функциям администратора.\n\n"
         "❓ Если у вас возникли вопросы, напишите администратору."
     )
-    await call.message.edit_text(help_text)
+    await call.message.edit_text(help_text, reply_markup=main_menu)
 
 
 def register_handlers_main(dp):

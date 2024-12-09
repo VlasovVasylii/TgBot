@@ -2,11 +2,11 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from states import TestGenerationState
 from db import execute_query
-from keyboards import generate_back_button, generate_filter_reviews_keyboard, tutor_menu
 from aiogram.fsm.context import FSMContext
 from features import generate_test
 from .main import send_main_menu
 from utils import get_user_role
+from keyboards import main_menu, tutor_menu, generate_back_button
 
 router = Router()
 
@@ -17,7 +17,7 @@ async def tutor_panel(call: CallbackQuery):
     user_role = get_user_role(call.from_user.id)
     if user_role != "tutor":
         await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для преподавателей.",
-                                     reply_markup=generate_back_button())
+                                     reply_markup=main_menu)
         await call.answer()
         return
 
@@ -31,12 +31,14 @@ async def tutor_panel(call: CallbackQuery):
 @router.callback_query(F.data.startswith("reviews_"))
 async def filtered_reviews(call: CallbackQuery):
     """Фильтрация отзывов."""
+    user_role = get_user_role(call.from_user.id)
+    if user_role != "tutor":
+        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.answer()
+        return
+
     tutor_contact = f"@{call.from_user.username}"
     tutor = execute_query("SELECT id FROM tutors WHERE contact = ?", (tutor_contact,), fetchone=True)
-
-    if not tutor:
-        await call.message.edit_text("❌ Вы не зарегистрированы как репетитор.", reply_markup=generate_back_button())
-        return
 
     tutor_id = tutor[0]
     filter_type = call.data.split("_")[1]
@@ -63,12 +65,14 @@ async def filtered_reviews(call: CallbackQuery):
 @router.callback_query(F.data == "upcoming_classes")
 async def view_upcoming_classes(call: CallbackQuery):
     """Просмотр предстоящих занятий репетитора."""
+    user_role = get_user_role(call.from_user.id)
+    if user_role != "tutor":
+        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.answer()
+        return
+
     tutor_contact = f"@{call.from_user.username}"
     tutor = execute_query("SELECT id FROM tutors WHERE contact = ?", (tutor_contact,), fetchone=True)
-
-    if not tutor:
-        await call.message.edit_text("❌ Вы не зарегистрированы как репетитор.", reply_markup=generate_back_button())
-        return
 
     tutor_id = tutor[0]
     upcoming_classes_ = execute_query("""
@@ -92,12 +96,14 @@ async def view_upcoming_classes(call: CallbackQuery):
 @router.callback_query(F.data.startswith("filter_reviews_"))
 async def filter_reviews(call: CallbackQuery):
     """Фильтрация отзывов."""
+    user_role = get_user_role(call.from_user.id)
+    if user_role != "tutor":
+        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.answer()
+        return
+
     tutor_contact = f"@{call.from_user.username}"
     tutor = execute_query("SELECT id FROM tutors WHERE contact = ?", (tutor_contact,), fetchone=True)
-
-    if not tutor:
-        await call.message.edit_text("❌ Вы не зарегистрированы как репетитор.", reply_markup=generate_back_button())
-        return
 
     tutor_id = tutor[0]
     filter_type = call.data.split("_")[2]  # Получение типа фильтра
@@ -138,20 +144,25 @@ async def filter_reviews(call: CallbackQuery):
 @router.callback_query(F.data == "tutor_analytics")
 async def tutor_analytics(call: CallbackQuery):
     """Аналитика для преподавателя."""
-    tutor_contact = f"@{call.from_user.username}"
-    tutor = execute_query("SELECT id, name FROM tutors WHERE contact = ?", (tutor_contact,), fetchone=True)
+    user_role = get_user_role(call.from_user.id)
+    if user_role != "tutor":
+        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для преподавателей.",
+                                     reply_markup=main_menu)
+        await call.answer()
+        return
 
+    tutor = execute_query("SELECT id, name FROM tutors WHERE id = ?", (call.from_user.id,), fetchone=True)
     if not tutor:
-        await call.message.edit_text("❌ Вы не зарегистрированы как преподаватель.", reply_markup=generate_back_button())
+        await call.message.edit_text("❌ Вы не зарегистрированы как преподаватель.",
+                                     reply_markup=generate_back_button())
+        await call.answer()
         return
 
     tutor_id, tutor_name = tutor
-
-    # SQL-запрос для подсчёта занятий и среднего рейтинга
     stats = execute_query("""
         SELECT COUNT(b.id) AS total_classes, COALESCE(AVG(f.rating), 0) AS avg_rating
         FROM bookings b
-        LEFT JOIN feedback f ON b.id = f.tutor_id
+        LEFT JOIN feedback f ON b.tutor_id = f.tutor_id
         WHERE b.tutor_id = ? AND b.status IN ('pending', 'approved', 'completed')
     """, (tutor_id,), fetchone=True)
 
@@ -172,15 +183,15 @@ async def tutor_analytics(call: CallbackQuery):
 async def generate_test_start(call: CallbackQuery, state: FSMContext):
     """Начало процесса генерации теста."""
     user_role = get_user_role(call.from_user.id)
-    if user_role != "tutor":
+    if user_role == "tutor":
+        await state.clear()
+        await state.set_state(TestGenerationState.waiting_for_topic)
+        await call.message.edit_text("📚 Укажите тему теста:", reply_markup=generate_back_button())
+        await call.answer()
+    else:
         await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
         await call.answer()
         return
-
-    await state.clear()
-    await state.set_state(TestGenerationState.waiting_for_topic)
-    await call.message.edit_text("📚 Укажите тему теста:", reply_markup=generate_back_button())
-    await call.answer()
 
 
 @router.message(TestGenerationState.waiting_for_topic)

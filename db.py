@@ -29,6 +29,13 @@ def init_db():
     """)
 
     cursor.execute("""
+    CREATE TABLE IF NOT EXISTS admins (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL
+    )
+    """)
+
+    cursor.execute("""
     CREATE TABLE IF NOT EXISTS bookings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tutor_id INTEGER NOT NULL,
@@ -81,9 +88,9 @@ def execute_query(query, params=(), fetchone=False, fetchall=False):
 def seed_mock_data():
     # Добавление студентов
     execute_query("""
-        INSERT INTO students (id, full_name, role, contact)
+        INSERT INTO students (id, full_name, contact)
         VALUES
-        (1, 'Тестовый Студент', 'student', 'student_contact')
+        (1, 'Тестовый Студент', 'student_contact')
     """)
 
     # Добавление репетиторов
