@@ -3,14 +3,48 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from states import RegistrationState
 from db import execute_query
-from keyboards import generate_role_selection_keyboard, generate_back_button
+from keyboards import generate_role_selection_keyboard, generate_back_button, student_menu, tutor_menu
 
 router = Router()
 
 
 @router.callback_query(F.data == "register")
 async def register_user(call: CallbackQuery, state: FSMContext):
-    """Начало процесса регистрации."""
+    """
+    Обработка кнопки "Зарегистрироваться".
+    Проверяет, есть ли пользователь в БД, и отображает соответствующую информацию.
+    """
+    user_id = call.from_user.id
+    user_data = execute_query("""
+        SELECT role, full_name
+        FROM users
+        WHERE id = ?
+    """, (user_id,), fetchone=True)
+
+    if user_data:
+        role, full_name = user_data
+        if role == "student":
+            menu = student_menu
+            role_name = "Студент"
+        elif role == "tutor":
+            menu = tutor_menu
+            role_name = "Репетитор"
+        else:
+            menu = generate_back_button()
+            role_name = "Неизвестный"
+
+        # Сообщение для зарегистрированных пользователей
+        await call.message.edit_text(
+            f"✅ Вы уже зарегистрированы!\n"
+            f"👤 Имя: {full_name}\n"
+            f"📋 Статус: {role_name}",
+            reply_markup=menu
+        )
+    else:
+        # Сообщение для незарегистрированных пользователей
+        await call.message.edit_text(
+            "👋 Вы ещё не зарегистрированы. Пожалуйста, пройдите регистрацию."
+        )
     await state.clear()
     await call.message.edit_text("👥 Выберите вашу роль:", reply_markup=generate_role_selection_keyboard())
     await call.answer()
@@ -62,14 +96,14 @@ async def save_user_data(message: Message, state: FSMContext):
     if role == "tutor":
         subject = data["subject"]
         execute_query("""
-        INSERT INTO tutors (name, subject, contact)
-        VALUES (?, ?, ?)
-        """, (full_name, subject, contact))
+        INSERT INTO tutors (id, name, subject, contact)
+        VALUES (?, ?, ?, ?)
+        """, (message.from_user.id, full_name, subject, contact))
     else:
         execute_query("""
-        INSERT INTO users (id, full_name, role, contact)
-        VALUES (?, ?, ?, ?)
-        """, (message.from_user.id, full_name, role, contact))
+        INSERT INTO students (id, full_name, contact)
+        VALUES (?, ?, ?)
+        """, (message.from_user.id, full_name, contact))
 
     await state.clear()
     await message.reply(

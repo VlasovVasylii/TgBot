@@ -1,20 +1,27 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import CallbackQuery
 from db import execute_query
 from keyboards import generate_admin_panel_keyboard, generate_back_button
-from config import ADMIN_ID
+from config import ADMIN_IDS
 
 router = Router()
 
 
-@router.message(F.text.startswith("/admin"))
-async def admin_panel(message: Message):
-    """Панель администратора."""
-    if str(message.from_user.id) != ADMIN_ID:
-        await message.reply("❌ У вас нет доступа к панели администратора.")
+@router.callback_query(F.data == "admin")
+async def admin_panel(call: CallbackQuery):
+    """
+    Панель администратора. Проверяет права доступа по ID пользователя.
+    """
+    if str(call.from_user.id) not in ADMIN_IDS:
+        await call.message.edit_text("❌ У вас нет доступа к панели администратора.")
+        await call.answer()
         return
 
-    await message.reply("📋 Панель администратора:", reply_markup=generate_admin_panel_keyboard())
+    await call.message.edit_text(
+        "📋 Добро пожаловать в панель администратора:",
+        reply_markup=generate_admin_panel_keyboard()
+    )
+    await call.answer()
 
 
 @router.callback_query(F.data == "manage_tutors")

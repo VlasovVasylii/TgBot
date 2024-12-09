@@ -8,12 +8,29 @@ from aiogram_calendar.simple_calendar import SimpleCalendar, SimpleCalendarCallb
 from features.problem_solving import solve_problem
 from db import execute_query
 from states import FeedbackState
-from .menu import send_main_menu
+from .main import send_main_menu
 from keyboards import generate_back_button, generate_feedback_keyboard, generate_tutor_keyboard, \
-    generate_confirm_booking_keyboard
+    generate_confirm_booking_keyboard, student_menu
 from utils import get_user_role
+from handlers import send_or_edit_message
 
 router = Router()
+
+
+@router.callback_query(F.data == "student_functions")
+async def student_functions(call: CallbackQuery):
+    """Обработка кнопки 'Для студентов'."""
+    user_role = get_user_role(call.from_user.id)
+    if user_role != "student":
+        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.answer()
+        return
+
+    await call.message.edit_text(
+        "🎓 Функции для студентов:",
+        reply_markup=student_menu
+    )
+    await call.answer()
 
 
 @router.callback_query(F.data == "feedback")
@@ -265,24 +282,33 @@ async def solve_user_problem(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "book")
 async def start_booking(call: CallbackQuery, state: FSMContext):
-    """Начало процесса бронирования."""
+    """Начало процесса бронирования занятия."""
     user_role = get_user_role(call.from_user.id)
     if user_role != "student":
-        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
-        await call.answer()
+        await send_or_edit_message(
+            call,
+            text="❌ Доступ запрещён. Эта функция доступна только для студентов.",
+            edit=False
+        )
         return
 
     await state.clear()
     tutors = execute_query("SELECT id, name FROM tutors", fetchall=True)
     if tutors:
-        response = "📖 Выберите репетитора для бронирования:\n"
-        for tutor_id, name in tutors:
-            response += f"{tutor_id}: {name}\n"
-        await call.message.edit_text(response, reply_markup=generate_tutor_keyboard(tutors))
+        await send_or_edit_message(
+            call,
+            text="📖 Выберите репетитора для бронирования:",
+            reply_markup=generate_tutor_keyboard(tutors),
+            edit=True
+        )
         await state.set_state(BookingState.waiting_for_tutor_id)
     else:
-        await call.message.edit_text("❌ Преподаватели пока недоступны.", reply_markup=generate_back_button())
-    await call.answer()
+        await send_or_edit_message(
+            call,
+            text="❌ Преподаватели пока недоступны.",
+            reply_markup=generate_back_button(),
+            edit=False
+        )
 
 
 @router.callback_query(BookingState.waiting_for_tutor_id)
@@ -295,8 +321,12 @@ async def handle_tutor_selection(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text("📅 Выберите дату:", reply_markup=await SimpleCalendar().start_calendar())
         await state.set_state(BookingState.waiting_for_date)
     else:
-        await call.message.edit_text("❌ Репетитор не найден. Попробуйте ещё раз.", reply_markup=generate_back_button())
-    await call.answer()
+        await send_or_edit_message(
+            call,
+            text="❌ Репетитор не найден. Попробуйте ещё раз.",
+            reply_markup=generate_back_button(),
+            edit=False
+        )
 
 
 @router.callback_query(SimpleCalendarCallback.filter())
@@ -304,21 +334,29 @@ async def process_calendar(call: CallbackQuery, callback_data: SimpleCalendarCal
     """Обработка выбора даты."""
     result, key, step = await SimpleCalendar().process_selection(call, callback_data)
     if result:
-        selected_date_str = result.strftime("%Y-%m-%d")
-        if datetime.strptime(selected_date_str, "%Y-%m-%d").date() >= datetime.now().date():
-            await state.update_data(date=selected_date_str)
-            await call.message.edit_text(
-                f"📅 Вы выбрали дату {selected_date_str}.\nТеперь укажите время (HH:MM):"
+        selected_date = result.strftime("%Y-%m-%d")
+        if datetime.strptime(selected_date, "%Y-%m-%d").date() >= datetime.now().date():
+            await state.update_data(date=selected_date)
+            await send_or_edit_message(
+                call,
+                text=f"📅 Вы выбрали дату {selected_date}. Теперь укажите время (HH:MM):",
+                edit=False
             )
             await state.set_state(BookingState.waiting_for_time)
         else:
-            await call.message.edit_text(
-                "❌ Нельзя выбрать прошедшую дату. Попробуйте снова.",
-                reply_markup=await SimpleCalendar().start_calendar()
+            await send_or_edit_message(
+                call,
+                text="❌ Нельзя выбрать прошедшую дату. Попробуйте снова.",
+                reply_markup=await SimpleCalendar().start_calendar(),
+                edit=False
             )
     else:
-        await call.message.edit_text("❌ Выбор даты отменён. Попробуйте снова.", reply_markup=generate_back_button())
-    await call.answer()
+        await send_or_edit_message(
+            call,
+            text="❌ Выбор даты отменён. Попробуйте снова.",
+            reply_markup=generate_back_button(),
+            edit=False
+        )
 
 
 @router.message(BookingState.waiting_for_time)
@@ -327,14 +365,25 @@ async def handle_booking_time(message: Message, state: FSMContext):
     time = message.text.strip()
     try:
         # Проверка формата времени
-        datetime.strptime(time, "%H:%M")
+        selected_time = datetime.strptime(time, "%H:%M")
 
         # Проверка времени бронирования
         data = await state.get_data()
         date = data["date"]
         selected_datetime = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
         if selected_datetime <= datetime.now() + timedelta(hours=1.5):
-            await message.reply("❌ Бронирование возможно не позже, чем за 1 час до начала занятия.")
+            await message.reply("❌ Бронирование возможно не менее чем за 1,5 часа до начала занятия.")
+            return
+
+        # Проверка занятости у репетитора
+        tutor_id = data["tutor_id"]
+        existing_booking = execute_query("""
+            SELECT id FROM bookings 
+            WHERE tutor_id = ? AND date = ? AND time = ?
+        """, (tutor_id, date, time), fetchone=True)
+
+        if existing_booking:
+            await message.reply("❌ Это время уже занято у репетитора. Выберите другое время.")
             return
 
         await state.update_data(time=time)
@@ -344,30 +393,42 @@ async def handle_booking_time(message: Message, state: FSMContext):
         await message.reply("❌ Неверный формат времени. Введите время в формате HH:MM.")
 
 
-@router.message(BookingState.waiting_for_comment)
-async def handle_booking_comment(message: Message, state: FSMContext):
-    """Сохранение комментария и подтверждение бронирования."""
-    comment = message.text.strip()
-    comment = comment if comment.lower() != "нет" else ""
-    await state.update_data(comment=comment)
-
+@router.callback_query(F.data == "confirm_booking")
+async def confirm_booking(call: CallbackQuery, state: FSMContext):
+    """Подтверждение бронирования."""
     data = await state.get_data()
     tutor_id = data["tutor_id"]
     date = data["date"]
     time = data["time"]
+    comment = data.get("comment", "")
 
-    tutor = execute_query("SELECT name FROM tutors WHERE id = ?", (tutor_id,), fetchone=True)
-    if tutor:
-        tutor_name = tutor[0]
-        await state.set_state(BookingState.confirm_booking)
-        await message.reply(
-            f"📅 Подтверждение бронирования:\n"
-            f"Репетитор: {tutor_name}\nДата: {date}\nВремя: {time}\nКомментарий: {comment}\n\n"
-            "✅ Подтвердите или отмените бронирование.",
-            reply_markup=generate_confirm_booking_keyboard()
-        )
-    else:
-        await message.reply("❌ Репетитор не найден.")
+    # Сохранение бронирования в базе данных
+    execute_query(
+        """
+        INSERT INTO bookings (tutor_id, student_contact, date, time, status, comment)
+        VALUES (?, ?, ?, ?, 'pending', ?)
+        """,
+        (tutor_id, call.from_user.id, date, time, comment)
+    )
+
+    await state.clear()
+    await send_or_edit_message(
+        call,
+        text="✅ Ваше бронирование было отправлено на подтверждение репетитору!",
+        reply_markup=generate_back_button(),
+        edit=False
+    )
+
+
+@router.callback_query(F.data == "cancel_booking")
+async def cancel_booking(call: CallbackQuery, state: FSMContext):
+    """Обработка отмены бронирования."""
+    await state.clear()
+    await call.message.edit_text(
+        "❌ Бронирование отменено.",
+        reply_markup=generate_back_button()
+    )
+    await call.answer()
 
 
 def update_tutor_rating(tutor_id):

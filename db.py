@@ -9,10 +9,9 @@ def init_db():
     cursor = conn.cursor()
 
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
+        CREATE TABLE IF NOT EXISTS students (
             id INTEGER PRIMARY KEY,
             full_name TEXT NOT NULL,
-            role TEXT NOT NULL CHECK(role IN ('student', 'tutor', 'admin')),  -- Добавили 'admin'
             username TEXT,
             contact TEXT
         )
@@ -20,7 +19,7 @@ def init_db():
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS tutors (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         subject TEXT NOT NULL,
         contact TEXT NOT NULL,
@@ -80,12 +79,11 @@ def execute_query(query, params=(), fetchone=False, fetchall=False):
 
 
 def seed_mock_data():
-    # Добавление пользователей
+    # Добавление студентов
     execute_query("""
-        INSERT INTO users (id, full_name, role, contact)
+        INSERT INTO students (id, full_name, role, contact)
         VALUES
-        (1, 'Тестовый Студент', 'student', 'student_contact'),
-        (2, 'Тестовый Администратор', 'admin', 'admin_contact')
+        (1, 'Тестовый Студент', 'student', 'student_contact')
     """)
 
     # Добавление репетиторов
