@@ -1,11 +1,17 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
+from states import ProblemSolvingState, BookingState
+from datetime import timedelta, datetime
+from aiogram_calendar.simple_calendar import SimpleCalendar, SimpleCalendarCallback
 
+from features.problem_solving import solve_problem
 from db import execute_query
 from states import FeedbackState
 from .menu import send_main_menu
-from keyboards import generate_back_button, generate_feedback_keyboard
+from keyboards import generate_back_button, generate_feedback_keyboard, generate_tutor_keyboard, \
+    generate_confirm_booking_keyboard
+from utils import get_user_role
 
 router = Router()
 
@@ -13,6 +19,12 @@ router = Router()
 @router.callback_query(F.data == "feedback")
 async def feedback_start(call: CallbackQuery, state: FSMContext):
     """Начало процесса оставления отзыва."""
+    user_role = get_user_role(call.from_user.id)
+    if user_role != "student":
+        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.answer()
+        return
+
     await state.clear()
     tutors = execute_query("""
         SELECT DISTINCT t.id, t.name
@@ -87,6 +99,12 @@ async def save_feedback(message: Message, state: FSMContext):
 @router.callback_query(F.data == "view_feedback")
 async def view_feedback(call: CallbackQuery):
     """Просмотр отзывов ученика."""
+    user_role = get_user_role(call.from_user.id)
+    if user_role != "student":
+        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.answer()
+        return
+
     feedbacks = execute_query("""
         SELECT f.id, t.name, f.rating, f.comment
         FROM feedback f
@@ -163,6 +181,193 @@ async def view_tutor_feedback(call: CallbackQuery):
 
     await call.message.edit_text(response, reply_markup=generate_back_button())
     await call.answer()
+
+
+@router.callback_query(F.data == "calendar")
+async def calendar_handler(call: CallbackQuery, state: FSMContext):
+    """Обработка кнопки 'Календарь занятий'."""
+    user_role = get_user_role(call.from_user.id)
+    if user_role != "student":
+        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.answer()
+        return
+
+    await state.clear()
+    bookings = execute_query("""
+    SELECT t.name, b.date, b.time, b.status
+    FROM bookings b
+    JOIN tutors t ON b.tutor_id = t.id
+    WHERE b.student_contact = ?
+    ORDER BY b.date, b.time
+    """, (call.from_user.id,), fetchall=True)
+
+    if bookings:
+        response = "📅 Ваши предстоящие занятия:\n\n"
+        for tutor_name, date, time, status in bookings:
+            response += f"👩‍🏫 Репетитор: {tutor_name}\n📆 Дата: {date}, время: {time}\n📌 Статус: {status}\n\n"
+    else:
+        response = "❌ У вас нет предстоящих занятий."
+
+    await call.message.edit_text(response, reply_markup=generate_back_button())
+    await call.answer()
+
+
+@router.callback_query(F.data == "find_tutor")
+async def find_tutor_handler(call: CallbackQuery, state: FSMContext):
+    """Обработка кнопки 'Найти репетитора'."""
+    user_role = get_user_role(call.from_user.id)
+    if user_role != "student":
+        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.answer()
+        return
+
+    await state.clear()
+    tutors = execute_query("SELECT id, name FROM tutors", fetchall=True)
+    if tutors:
+        await call.message.edit_text(
+            "🔍 Выберите репетитора, чтобы увидеть отзывы:",
+            reply_markup=generate_tutor_keyboard(tutors)
+        )
+    else:
+        await call.message.edit_text("❌ Репетиторы пока недоступны.", reply_markup=generate_back_button())
+    await call.answer()
+
+
+@router.callback_query(F.data == "solve_problem")
+async def solve_problem_start(call: CallbackQuery, state: FSMContext):
+    """Начало процесса объяснения задачи."""
+    user_role = get_user_role(call.from_user.id)
+    if user_role != "student":
+        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.answer()
+        return
+
+    await state.clear()
+    await state.set_state(ProblemSolvingState.waiting_for_problem)
+    await call.message.edit_text("🤔 Опишите задачу, которую хотите решить:", reply_markup=generate_back_button())
+    await call.answer()
+
+
+@router.message(ProblemSolvingState.waiting_for_problem)
+async def solve_user_problem(message: Message, state: FSMContext):
+    """Решение задачи."""
+    problem = message.text
+    await message.reply("⏳ Идёт поиск решения, пожалуйста, подождите...")
+    try:
+        solution = solve_problem(problem)
+        await state.clear()
+        await message.reply(f"✅ Решение вашей задачи:\n\n{solution}")
+    except Exception as e:
+        await state.clear()
+        await message.reply(f"❌ Ошибка при решении задачи: {e}")
+    await send_main_menu(message, state)
+
+
+@router.callback_query(F.data == "book")
+async def start_booking(call: CallbackQuery, state: FSMContext):
+    """Начало процесса бронирования."""
+    user_role = get_user_role(call.from_user.id)
+    if user_role != "student":
+        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
+        await call.answer()
+        return
+
+    await state.clear()
+    tutors = execute_query("SELECT id, name FROM tutors", fetchall=True)
+    if tutors:
+        response = "📖 Выберите репетитора для бронирования:\n"
+        for tutor_id, name in tutors:
+            response += f"{tutor_id}: {name}\n"
+        await call.message.edit_text(response, reply_markup=generate_tutor_keyboard(tutors))
+        await state.set_state(BookingState.waiting_for_tutor_id)
+    else:
+        await call.message.edit_text("❌ Преподаватели пока недоступны.", reply_markup=generate_back_button())
+    await call.answer()
+
+
+@router.callback_query(BookingState.waiting_for_tutor_id)
+async def handle_tutor_selection(call: CallbackQuery, state: FSMContext):
+    """Обработка выбора репетитора."""
+    tutor_id = call.data.split("_")[1]
+    tutor = execute_query("SELECT id, name FROM tutors WHERE id = ?", (tutor_id,), fetchone=True)
+    if tutor:
+        await state.update_data(tutor_id=tutor[0])
+        await call.message.edit_text("📅 Выберите дату:", reply_markup=await SimpleCalendar().start_calendar())
+        await state.set_state(BookingState.waiting_for_date)
+    else:
+        await call.message.edit_text("❌ Репетитор не найден. Попробуйте ещё раз.", reply_markup=generate_back_button())
+    await call.answer()
+
+
+@router.callback_query(SimpleCalendarCallback.filter())
+async def process_calendar(call: CallbackQuery, callback_data: SimpleCalendarCallback, state: FSMContext):
+    """Обработка выбора даты."""
+    result, key, step = await SimpleCalendar().process_selection(call, callback_data)
+    if result:
+        selected_date_str = result.strftime("%Y-%m-%d")
+        if datetime.strptime(selected_date_str, "%Y-%m-%d").date() >= datetime.now().date():
+            await state.update_data(date=selected_date_str)
+            await call.message.edit_text(
+                f"📅 Вы выбрали дату {selected_date_str}.\nТеперь укажите время (HH:MM):"
+            )
+            await state.set_state(BookingState.waiting_for_time)
+        else:
+            await call.message.edit_text(
+                "❌ Нельзя выбрать прошедшую дату. Попробуйте снова.",
+                reply_markup=await SimpleCalendar().start_calendar()
+            )
+    else:
+        await call.message.edit_text("❌ Выбор даты отменён. Попробуйте снова.", reply_markup=generate_back_button())
+    await call.answer()
+
+
+@router.message(BookingState.waiting_for_time)
+async def handle_booking_time(message: Message, state: FSMContext):
+    """Обработка времени с проверкой."""
+    time = message.text.strip()
+    try:
+        # Проверка формата времени
+        datetime.strptime(time, "%H:%M")
+
+        # Проверка времени бронирования
+        data = await state.get_data()
+        date = data["date"]
+        selected_datetime = datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
+        if selected_datetime <= datetime.now() + timedelta(hours=1.5):
+            await message.reply("❌ Бронирование возможно не позже, чем за 1 час до начала занятия.")
+            return
+
+        await state.update_data(time=time)
+        await state.set_state(BookingState.waiting_for_comment)
+        await message.reply("💬 Добавьте комментарий для репетитора (или отправьте 'нет'):")
+    except ValueError:
+        await message.reply("❌ Неверный формат времени. Введите время в формате HH:MM.")
+
+
+@router.message(BookingState.waiting_for_comment)
+async def handle_booking_comment(message: Message, state: FSMContext):
+    """Сохранение комментария и подтверждение бронирования."""
+    comment = message.text.strip()
+    comment = comment if comment.lower() != "нет" else ""
+    await state.update_data(comment=comment)
+
+    data = await state.get_data()
+    tutor_id = data["tutor_id"]
+    date = data["date"]
+    time = data["time"]
+
+    tutor = execute_query("SELECT name FROM tutors WHERE id = ?", (tutor_id,), fetchone=True)
+    if tutor:
+        tutor_name = tutor[0]
+        await state.set_state(BookingState.confirm_booking)
+        await message.reply(
+            f"📅 Подтверждение бронирования:\n"
+            f"Репетитор: {tutor_name}\nДата: {date}\nВремя: {time}\nКомментарий: {comment}\n\n"
+            "✅ Подтвердите или отмените бронирование.",
+            reply_markup=generate_confirm_booking_keyboard()
+        )
+    else:
+        await message.reply("❌ Репетитор не найден.")
 
 
 def update_tutor_rating(tutor_id):

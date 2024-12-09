@@ -1,8 +1,11 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
+from states import TestGenerationState
 from db import execute_query
-from keyboards import main_menu, generate_back_button, generate_tutor_keyboard
+from keyboards import main_menu, generate_back_button
 from aiogram.fsm.context import FSMContext
+from features import generate_test
+from .menu import send_main_menu
 from utils import get_user_role
 
 router = Router()
@@ -87,16 +90,16 @@ async def view_upcoming_classes(call: CallbackQuery):
         return
 
     tutor_id = tutor[0]
-    upcoming_classes = execute_query("""
+    upcoming_classes_ = execute_query("""
         SELECT student_name, date, time, comment
         FROM bookings
         WHERE tutor_id = ? AND status IN ('pending', 'approved')
         ORDER BY date, time
     """, (tutor_id,), fetchall=True)
 
-    if upcoming_classes:
+    if upcoming_classes_:
         response = "📅 Ваши предстоящие занятия:\n\n"
-        for student_name, date, time, comment in upcoming_classes:
+        for student_name, date, time, comment in upcoming_classes_:
             response += f"👩‍🎓 {student_name}: {date} в {time}\n💬 {comment}\n\n"
     else:
         response = "❌ У вас нет предстоящих занятий."
@@ -194,25 +197,34 @@ async def upcoming_classes(call: CallbackQuery):
     await call.answer()
 
 
-@router.callback_query(F.data == "find_tutor")
-async def find_tutor_handler(call: CallbackQuery, state: FSMContext):
-    """Обработка кнопки 'Найти репетитора'."""
+@router.callback_query(F.data == "generate_test")
+async def generate_test_start(call: CallbackQuery, state: FSMContext):
+    """Начало процесса генерации теста."""
     user_role = get_user_role(call.from_user.id)
-    if user_role != "student":
+    if user_role != "tutor":
         await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
         await call.answer()
         return
 
     await state.clear()
-    tutors = execute_query("SELECT id, name FROM tutors", fetchall=True)
-    if tutors:
-        await call.message.edit_text(
-            "🔍 Выберите репетитора, чтобы увидеть отзывы:",
-            reply_markup=generate_tutor_keyboard(tutors)
-        )
-    else:
-        await call.message.edit_text("❌ Репетиторы пока недоступны.", reply_markup=generate_back_button())
+    await state.set_state(TestGenerationState.waiting_for_topic)
+    await call.message.edit_text("📚 Укажите тему теста:", reply_markup=generate_back_button())
     await call.answer()
+
+
+@router.message(TestGenerationState.waiting_for_topic)
+async def generate_test_for_topic(message: Message, state: FSMContext):
+    """Генерация теста по теме."""
+    topic = message.text
+    await message.reply("⏳ Создаётся тест, пожалуйста, подождите...")
+    try:
+        test = generate_test(topic)
+        await state.clear()
+        await message.reply(f"✅ Тест по теме '{topic}':\n\n{test}")
+    except Exception as e:
+        await state.clear()
+        await message.reply(f"❌ Ошибка генерации теста: {e}")
+    await send_main_menu(message, state)
 
 
 def generate_tutor_panel_keyboard():
