@@ -73,7 +73,7 @@ def seed_mock_data():
     execute_query("""
         INSERT INTO students (id, full_name, username, contact)
         VALUES
-         (1833243481, "Иван Иванов", "ivan123", "ivan@example.com"),
+         (1, "Иван Иванов", "ivan123", "ivan@example.com"),
          (2, "Мария Смирнова", "maria321", "maria@example.com")
     """)
 
@@ -81,9 +81,16 @@ def seed_mock_data():
     execute_query("""
         INSERT INTO tutors (id, name, subject, contact, rating, feedback_count)
         VALUES
-        (1, "Алексей Петров", "Математика", "alex@example.com", 0.0, 0),
+        (1833243481, "Игорь Иваныч", "Математика", "alex@example.com", 0.0, 0),
         (2, "Ольга Сидорова", "Английский язык", "olga@example.com", 0.0, 0)
     """)
+
+    # Добавление админов
+    execute_query("""
+            INSERT INTO admins (id, name)
+            VALUES
+            (1833243481, 'Вася Власов')
+        """)
 
     # Добавление бронирований
     execute_query("""
@@ -94,11 +101,12 @@ def seed_mock_data():
     """)
 
     # Добавление отзывов
-    # execute_query("""
-    #     INSERT INTO feedback (tutor_id, student_name, student_contact, rating, comment)
-    #     VALUES
-    #     ()
-    # """)
+    execute_query("""
+        INSERT INTO feedback (tutor_id, student_name, student_contact, rating, comment)
+        VALUES
+        (1, 'Иван Иванов', "ivan@example.com", 4, 'nice'),
+        (2, 'Иван Иванов', "ivan@example.com", 3, 'normal')
+    """)
 
     update_tutor_rating(1)
     update_tutor_rating(2)

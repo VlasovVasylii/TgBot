@@ -90,11 +90,10 @@ def generate_filter_reviews_keyboard():
 def generate_feedback_keyboard(feedback_id):
     """Клавиатура для изменения или удаления отзыва."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✏️ Изменить", callback_data=f"edit_feedback_{feedback_id}"),
-            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_feedback_{feedback_id}")
-        ],
-        [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="main_menu")]
+        [InlineKeyboardButton(text="✏️ Изменить рейтинг", callback_data=f"edit_feedback_{feedback_id}")],
+        [InlineKeyboardButton(text="✏️ Изменить комментарий", callback_data=f"edit_comment_{feedback_id}")],
+        [InlineKeyboardButton(text="🗑️ Удалить", callback_data=f"delete_feedback_{feedback_id}")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="view_feedback")]
     ])
 
 

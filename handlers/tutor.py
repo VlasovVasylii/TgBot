@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
-from states import TestGenerationState
+from states import TestGenerationState, TutorState
 from datetime import datetime
 from services import execute_query
 from aiogram.fsm.context import FSMContext
@@ -32,8 +32,8 @@ async def tutor_panel(call: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("reviews_"))
-async def filter_reviews(call: CallbackQuery):
-    """Фильтрация отзывов преподавателя."""
+async def choose_review_filter(call: CallbackQuery, state: FSMContext):
+    """Выбор фильтра для отзывов."""
     user_role = get_user_role(call.from_user.id)
     if user_role != "tutor":
         await call.message.edit_text(
@@ -43,10 +43,7 @@ async def filter_reviews(call: CallbackQuery):
         await call.answer()
         return
 
-    tutor = execute_query(
-        "SELECT id FROM tutors WHERE id = ?", (call.from_user.id,), fetchone=True
-    )
-
+    tutor = execute_query("SELECT id FROM tutors WHERE id = ?", (call.from_user.id,), fetchone=True)
     if not tutor:
         await call.message.edit_text(
             "❌ Вы не зарегистрированы как преподаватель.",
@@ -55,14 +52,29 @@ async def filter_reviews(call: CallbackQuery):
         return
 
     tutor_id = tutor[0]
-    filter_type = call.data.split("_")[1]
+    await state.update_data(tutor_id=tutor_id)
+
+    await state.set_state(TutorState.waiting_for_review_filter)
+    await call.message.edit_text("Выберите фильтр для отзывов (high/low/all):", reply_markup=generate_back_button())
+    await call.answer()
+
+
+@router.message(TutorState.waiting_for_review_filter)
+async def handle_review_filter(message: Message, state: FSMContext):
+    """Применение фильтра для отзывов."""
+    filter_type = message.text.strip().lower()
+    data = await state.get_data()
+    tutor_id = data["tutor_id"]
 
     if filter_type == "high":
         query = "SELECT student_name, rating, comment FROM feedback WHERE tutor_id = ? AND rating >= 4"
     elif filter_type == "low":
         query = "SELECT student_name, rating, comment FROM feedback WHERE tutor_id = ? AND rating <= 3"
-    else:
+    elif filter_type == "all":
         query = "SELECT student_name, rating, comment FROM feedback WHERE tutor_id = ?"
+    else:
+        await message.reply("❌ Неверный фильтр. Введите high, low или all.")
+        return
 
     feedbacks = execute_query(query, (tutor_id,), fetchall=True)
 
@@ -73,14 +85,13 @@ async def filter_reviews(call: CallbackQuery):
     else:
         response = "❌ Нет отзывов по выбранному фильтру."
 
-    await call.message.edit_text(response, reply_markup=generate_back_button())
-    await call.answer()
+    await state.clear()
+    await message.reply(response)
 
 
 @router.callback_query(F.data == "upcoming_classes")
 async def view_upcoming_classes(call: CallbackQuery):
     """Просмотр предстоящих занятий репетитора."""
-    # Проверка роли пользователя
     user_role = get_user_role(call.from_user.id)
     if user_role != "tutor":
         await call.message.edit_text(
@@ -90,11 +101,9 @@ async def view_upcoming_classes(call: CallbackQuery):
         await call.answer()
         return
 
-    # Получение данных репетитора
     tutor = execute_query(
-        "SELECT id, name FROM tutors WHERE id = ?", (call.from_user.id,), fetchone=True
+        "SELECT id FROM tutors WHERE id = ?", (call.from_user.id,), fetchone=True
     )
-
     if not tutor:
         await call.message.edit_text(
             "❌ Вы не зарегистрированы как преподаватель.",
@@ -105,11 +114,11 @@ async def view_upcoming_classes(call: CallbackQuery):
     tutor_id = tutor[0]
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     upcoming_classes = execute_query("""
-            SELECT student_name, date, time, comment
-            FROM bookings
-            WHERE tutor_id = ? AND status IN ('pending', 'approved') AND datetime(date || ' ' || time) > datetime(?)
-            ORDER BY date, time
-        """, (tutor_id, now), fetchall=True)
+        SELECT student_name, date, time, comment
+        FROM bookings
+        WHERE tutor_id = ? AND status IN ('pending', 'approved') AND datetime(date || ' ' || time) > datetime(?)
+        ORDER BY date, time
+    """, (tutor_id, now), fetchall=True)
 
     if upcoming_classes:
         response = "📅 Ваши предстоящие занятия:\n\n"

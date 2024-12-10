@@ -1,5 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
+from states import AdminState
+from aiogram.fsm.context import FSMContext
 from services import execute_query
 from keyboards import admin_menu, generate_back_button, main_menu
 
@@ -29,8 +31,25 @@ async def admin_panel(call: CallbackQuery):
     await call.answer()
 
 
-@router.callback_query(F.data == "manage_tutors")
-async def manage_tutors(call: CallbackQuery):
+@router.callback_query(AdminState.waiting_for_manage_action, F.data.in_(
+    ["manage_tutors", "manage_users", "manage_feedbacks", "manage_bookings"]))
+async def manage_actions(call: CallbackQuery, state: FSMContext):
+    """Обработка действий администратора."""
+    action = call.data
+    if action == "manage_tutors":
+        await handle_manage_tutors(call)
+    elif action == "manage_users":
+        await handle_manage_users(call)
+    elif action == "manage_feedbacks":
+        await handle_manage_feedbacks(call)
+    elif action == "manage_bookings":
+        await handle_manage_bookings(call)
+    else:
+        await call.message.edit_text("❌ Неизвестное действие.", reply_markup=generate_back_button())
+    await call.answer()
+
+
+async def handle_manage_tutors(call: CallbackQuery):
     """Управление репетиторами."""
     tutors = execute_query("SELECT id, name, subject, rating FROM tutors", fetchall=True)
 
@@ -41,13 +60,10 @@ async def manage_tutors(call: CallbackQuery):
         await call.message.edit_text(response, reply_markup=admin_menu)
     else:
         await call.message.edit_text("❌ Репетиторы отсутствуют.", reply_markup=generate_back_button())
-    await call.answer()
 
 
-@router.callback_query(F.data == "manage_users")
-async def manage_users(call: CallbackQuery):
+async def handle_manage_users(call: CallbackQuery):
     """Управление пользователями."""
-    # Извлекаем студентов и преподавателей из соответствующих таблиц
     students = execute_query("SELECT id, full_name, contact FROM students", fetchall=True)
     tutors = execute_query("SELECT id, name, subject, contact FROM tutors", fetchall=True)
 
@@ -67,16 +83,14 @@ async def manage_users(call: CallbackQuery):
         response = "❌ Пользователи отсутствуют."
 
     await call.message.edit_text(response, reply_markup=admin_menu)
-    await call.answer()
 
 
-@router.callback_query(F.data == "manage_feedbacks")
-async def manage_feedbacks(call: CallbackQuery):
+async def handle_manage_feedbacks(call: CallbackQuery):
     """Управление отзывами."""
     feedbacks = execute_query("""
-    SELECT f.id, t.name, f.rating, f.comment, f.student_name
-    FROM feedback f
-    JOIN tutors t ON f.tutor_id = t.id
+        SELECT f.id, t.name, f.rating, f.comment, f.student_name
+        FROM feedback f
+        JOIN tutors t ON f.tutor_id = t.id
     """, fetchall=True)
 
     if feedbacks:
@@ -90,16 +104,14 @@ async def manage_feedbacks(call: CallbackQuery):
         await call.message.edit_text(response, reply_markup=admin_menu)
     else:
         await call.message.edit_text("❌ Отзывы отсутствуют.", reply_markup=generate_back_button())
-    await call.answer()
 
 
-@router.callback_query(F.data == "manage_bookings")
-async def manage_bookings(call: CallbackQuery):
+async def handle_manage_bookings(call: CallbackQuery):
     """Управление занятиями."""
     bookings = execute_query("""
-    SELECT b.id, t.name, b.student_name, b.date, b.time, b.status
-    FROM bookings b
-    JOIN tutors t ON b.tutor_id = t.id
+        SELECT b.id, t.name, b.student_name, b.date, b.time, b.status
+        FROM bookings b
+        JOIN tutors t ON b.tutor_id = t.id
     """, fetchall=True)
 
     if bookings:
@@ -113,7 +125,6 @@ async def manage_bookings(call: CallbackQuery):
         await call.message.edit_text(response, reply_markup=admin_menu)
     else:
         await call.message.edit_text("❌ Занятия отсутствуют.", reply_markup=generate_back_button())
-    await call.answer()
 
 
 def register_handlers_admin(dp):
