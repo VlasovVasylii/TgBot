@@ -30,8 +30,7 @@ student_menu = InlineKeyboardMarkup(inline_keyboard=[
 tutor_menu = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📅 Предстоящие занятия", callback_data="upcoming_classes"),
      InlineKeyboardButton(text="📝 Генерация тестов", callback_data="generate_test")],
-    [InlineKeyboardButton(text="⭐ Высокий рейтинг", callback_data="reviews_high_rating"),
-     InlineKeyboardButton(text="⭐ Низкий рейтинг", callback_data="reviews_low_rating")],
+    [InlineKeyboardButton(text="⭐ Рейтинг", callback_data="reviews_high_rating")],
     [InlineKeyboardButton(text="📊 Аналитика преподавателя", callback_data="tutor_analytics"),
      InlineKeyboardButton(text="ℹ️ Помощь", callback_data="help")]
 ])
