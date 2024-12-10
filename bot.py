@@ -1,5 +1,5 @@
 import asyncio
-from db import init_db, seed_mock_data
+from db import *
 from scheduler import setup_reminders
 from shared import dp, bot
 from handlers import register_handlers

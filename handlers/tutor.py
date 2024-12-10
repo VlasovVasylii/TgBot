@@ -1,7 +1,8 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from states import TestGenerationState
-from db import execute_query
+from datetime import datetime
+from services import execute_query
 from aiogram.fsm.context import FSMContext
 from features import generate_test
 from .main import send_main_menu
@@ -54,11 +55,11 @@ async def filter_reviews(call: CallbackQuery):
         return
 
     tutor_id = tutor[0]
-    filter_type = call.data.split("_")[2]
+    filter_type = call.data.split("_")[1]
 
-    if filter_type == "high_rating":
+    if filter_type == "high":
         query = "SELECT student_name, rating, comment FROM feedback WHERE tutor_id = ? AND rating >= 4"
-    elif filter_type == "low_rating":
+    elif filter_type == "low":
         query = "SELECT student_name, rating, comment FROM feedback WHERE tutor_id = ? AND rating <= 3"
     else:
         query = "SELECT student_name, rating, comment FROM feedback WHERE tutor_id = ?"
@@ -102,12 +103,13 @@ async def view_upcoming_classes(call: CallbackQuery):
         return
 
     tutor_id = tutor[0]
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     upcoming_classes = execute_query("""
-        SELECT student_name, date, time, comment
-        FROM bookings
-        WHERE tutor_id = ? AND status IN ('pending', 'approved')
-        ORDER BY date, time
-    """, (tutor_id,), fetchall=True)
+            SELECT student_name, date, time, comment
+            FROM bookings
+            WHERE tutor_id = ? AND status IN ('pending', 'approved') AND datetime(date || ' ' || time) > datetime(?)
+            ORDER BY date, time
+        """, (tutor_id, now), fetchall=True)
 
     if upcoming_classes:
         response = "📅 Ваши предстоящие занятия:\n\n"
@@ -123,31 +125,48 @@ async def view_upcoming_classes(call: CallbackQuery):
 @router.callback_query(F.data == "tutor_analytics")
 async def tutor_analytics(call: CallbackQuery):
     """Аналитика для преподавателя."""
-    user_role = get_user_role(call.from_user.id)
+    user_id = call.from_user.id
+
+    # Проверка роли пользователя
+    user_role = get_user_role(user_id)
     if user_role != "tutor":
-        await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для преподавателей.",
-                                     reply_markup=main_menu)
+        await call.message.edit_text(
+            "❌ Доступ запрещён. Эта функция доступна только для преподавателей.",
+            reply_markup=generate_back_button()
+        )
         await call.answer()
         return
 
-    tutor = execute_query("SELECT id, name FROM tutors WHERE id = ?", (call.from_user.id,), fetchone=True)
+    # Получение данных преподавателя
+    tutor = execute_query(
+        "SELECT id, name FROM tutors WHERE id = ?",
+        (user_id,),
+        fetchone=True
+    )
+
     if not tutor:
-        await call.message.edit_text("❌ Вы не зарегистрированы как преподаватель.",
-                                     reply_markup=generate_back_button())
-        await call.answer()
+        await call.message.edit_text(
+            "❌ Преподаватель не найден. Убедитесь, что вы зарегистрированы как преподаватель.",
+            reply_markup=generate_back_button()
+        )
         return
 
     tutor_id, tutor_name = tutor
+
+    # Получение статистики
     stats = execute_query("""
-        SELECT COUNT(b.id) AS total_classes, COALESCE(AVG(f.rating), 0) AS avg_rating
+        SELECT 
+            COUNT(b.id) AS total_classes, 
+            COALESCE(AVG(f.rating), 0) AS avg_rating
         FROM bookings b
-        LEFT JOIN feedback f ON b.tutor_id = f.tutor_id
-        WHERE b.tutor_id = ? AND b.status IN ('pending', 'approved', 'completed')
+        LEFT JOIN feedback f ON b.id = f.tutor_id
+        WHERE b.tutor_id = ? AND b.status = 'approved'
     """, (tutor_id,), fetchone=True)
 
-    total_classes = stats[0]
-    avg_rating = f"{stats[1]:.2f}" if stats[1] > 0 else "Нет отзывов"
+    total_classes = stats[0] or 0
+    avg_rating = f"{stats[1]:.2f}" if stats[1] else "Нет отзывов"
 
+    # Формирование ответа
     response = (
         f"📊 Аналитика для преподавателя {tutor_name}:\n\n"
         f"👥 Проведённых занятий: {total_classes}\n"

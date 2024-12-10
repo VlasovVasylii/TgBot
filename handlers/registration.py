@@ -1,8 +1,9 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
+from aiogram.exceptions import TelegramBadRequest
 from states import RegistrationState
-from db import execute_query
+from services import execute_query
 from keyboards import generate_role_selection_keyboard, generate_back_button, student_menu, tutor_menu, admin_menu
 
 router = Router()
@@ -26,32 +27,42 @@ async def register_user(call: CallbackQuery, state: FSMContext):
         "SELECT full_name FROM students WHERE id = ?", (user_id,), fetchone=True
     )
 
-    if existing_student:
-        await call.message.edit_text(
-            f"❌ Вы уже зарегистрированы!\n"
-            f"👤 Имя: {existing_student[0]}\n"
-            f"📋 Статус: Студент",
-            reply_markup=student_menu
-        )
-    elif existing_tutor:
-        await call.message.edit_text(
-            f"❌ Вы уже зарегистрированы!\n"
-            f"👤 Имя: {existing_tutor[0]}\n"
-            f"📋 Статус: Репетитор",
-            reply_markup=tutor_menu
-        )
-    elif existing_admin:
-        await call.message.edit_text(
-            f"❌ Вы уже зарегистрированы!\n"
-            f"👤 Имя: {existing_admin[0]}\n"
-            f"📋 Статус: Администратор",
-            reply_markup=admin_menu
-        )
-    else:
-        await call.message.edit_text("👋 Вы ещё не зарегистрированы. Пожалуйста, пройдите регистрацию.")
-        await state.set_state(RegistrationState.waiting_for_role)
-        await call.message.edit_text("👥 Выберите вашу роль:", reply_markup=generate_role_selection_keyboard())
-    await call.answer()
+    try:
+        if existing_student:
+            await call.message.edit_text(
+                f"❌ Вы уже зарегистрированы!\n"
+                f"👤 Имя: {existing_student[0]}\n"
+                f"📋 Статус: Студент",
+                reply_markup=student_menu,
+            )
+        elif existing_tutor:
+            await call.message.edit_text(
+                f"❌ Вы уже зарегистрированы!\n"
+                f"👤 Имя: {existing_tutor[0]}\n"
+                f"📋 Статус: Репетитор",
+                reply_markup=tutor_menu,
+            )
+        elif existing_admin:
+            await call.message.edit_text(
+                f"❌ Вы уже зарегистрированы!\n"
+                f"👤 Имя: {existing_admin[0]}\n"
+                f"📋 Статус: Администратор",
+                reply_markup=admin_menu,
+            )
+        else:
+            await call.message.edit_text(
+                "👋 Вы ещё не зарегистрированы. Пожалуйста, пройдите регистрацию."
+            )
+            await state.set_state(RegistrationState.waiting_for_role)
+            await call.message.edit_text(
+                "👥 Выберите вашу роль:", reply_markup=generate_role_selection_keyboard()
+            )
+        await call.answer()  # Отвечаем на CallbackQuery для предотвращения зависаний
+    except TelegramBadRequest as e:
+        if "query is too old" in str(e):
+            print("Query too old, skipping call.answer().")
+        else:
+            raise
 
 
 @router.callback_query(F.data.in_({"_student", "_tutor", "_admin"}))

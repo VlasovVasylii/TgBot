@@ -1,4 +1,7 @@
 import sqlite3
+from handlers.student import update_tutor_rating
+from services import execute_query
+
 
 DB_NAME = "edu_helper_bot.db"
 
@@ -65,54 +68,37 @@ def init_db():
     conn.close()
 
 
-def execute_query(query, params=(), fetchone=False, fetchall=False):
-    """Универсальная функция для выполнения запросов."""
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    try:
-        cursor.execute(query, params)
-        result = None
-        if fetchone:
-            result = cursor.fetchone()
-        elif fetchall:
-            result = cursor.fetchall()
-        conn.commit()
-        return result
-    except sqlite3.Error as e:
-        print(f"Ошибка базы данных: {e}")
-        raise
-    finally:
-        conn.close()
-
-
 def seed_mock_data():
     # Добавление студентов
     execute_query("""
-        INSERT INTO students (id, full_name, contact)
+        INSERT INTO students (id, full_name, username, contact)
         VALUES
-        (1, 'Тестовый Студент', 'student_contact')
+         (1833243481, "Иван Иванов", "ivan123", "ivan@example.com"),
+         (2, "Мария Смирнова", "maria321", "maria@example.com")
     """)
 
     # Добавление репетиторов
     execute_query("""
-        INSERT INTO tutors (name, subject, contact, rating, feedback_count)
+        INSERT INTO tutors (id, name, subject, contact, rating, feedback_count)
         VALUES
-        ('Репетитор Иван', 'Математика', '@ivan_tutor', 4.5, 2),
-        ('Репетитор Анна', 'Физика', '@anna_tutor', 5.0, 1)
+        (1, "Алексей Петров", "Математика", "alex@example.com", 0.0, 0),
+        (2, "Ольга Сидорова", "Английский язык", "olga@example.com", 0.0, 0)
     """)
 
     # Добавление бронирований
     execute_query("""
         INSERT INTO bookings (tutor_id, student_name, student_contact, date, time, comment, status)
         VALUES
-        (1, 'Тестовый Студент', 'student_contact', '2024-12-15', '15:00', 'Подготовка к экзамену', 'pending'),
-        (2, 'Тестовый Студент', 'student_contact', '2024-12-16', '14:00', 'Подготовка к ЕГЭ', 'approved')
+        (1, 'Иван Иванов', "ivan@example.com", '2024-12-09', '15:00', 'Подготовка к экзамену', 'approved'),
+        (2, 'Иван Иванов', "maria@example.com", '2024-12-10', '14:00', 'Подготовка к ЕГЭ', 'approved')
     """)
 
     # Добавление отзывов
-    execute_query("""
-        INSERT INTO feedback (tutor_id, student_name, student_contact, rating, comment)
-        VALUES
-        (1, 'Тестовый Студент', 'student_contact', 5, 'Отличный преподаватель!'),
-        (2, 'Тестовый Студент', 'student_contact', 4, 'Хорошо объясняет.')
-    """)
+    # execute_query("""
+    #     INSERT INTO feedback (tutor_id, student_name, student_contact, rating, comment)
+    #     VALUES
+    #     ()
+    # """)
+
+    update_tutor_rating(1)
+    update_tutor_rating(2)

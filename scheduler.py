@@ -1,9 +1,33 @@
 from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from db import execute_query
+from services import execute_query
+from handlers.student import update_tutor_rating
 from shared import bot
 
 scheduler = AsyncIOScheduler()
+
+
+def mark_completed_bookings():
+    """Отмечает занятия как завершённые, если они начались более 1,5 часов назад."""
+    now = datetime.now()
+    cutoff_time = now - timedelta(hours=1.5)
+
+    # Получение занятий, которые нужно отметить как завершённые
+    bookings_to_complete = execute_query("""
+        SELECT id, tutor_id
+        FROM bookings
+        WHERE status = 'pending' AND datetime(date || ' ' || time) <= datetime(?)
+    """, (cutoff_time.strftime("%Y-%m-%d %H:%M:%S"),), fetchall=True)
+
+    # Обновление статуса занятий
+    for booking_id, tutor_id in bookings_to_complete:
+        execute_query("""
+            UPDATE bookings
+            SET status = 'approved'
+            WHERE id = ?
+        """, (booking_id,))
+        # Обновление аналитики преподавателя
+        update_tutor_rating(tutor_id)
 
 
 def get_upcoming_bookings():
@@ -65,4 +89,5 @@ def setup_reminders():
     """Настройка напоминаний о занятиях."""
     scheduler.add_job(send_reminders, "interval", minutes=1)
     scheduler.add_job(update_booking_status, "interval", minutes=1)
+    scheduler.add_job(mark_completed_bookings, "interval", minutes=1)
     scheduler.start()

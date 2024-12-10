@@ -1,4 +1,4 @@
-from db import execute_query
+from services import execute_query
 
 
 def get_user_role(user_id):

@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
-from db import execute_query
+from services import execute_query
 from keyboards import admin_menu, generate_back_button, main_menu
 
 router = Router()

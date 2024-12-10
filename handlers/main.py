@@ -38,7 +38,7 @@ async def help_handler(message: Message):
 
 
 @router.callback_query(F.data == "main_menu")
-async def send_main_menu(message_or_call: Message | CallbackQuery, state: FSMContext):
+async def send_main_menu(message_or_call: Message | CallbackQuery):
     """Отправка главного меню."""
     user_role = get_user_role(message_or_call.from_user.id)
     if user_role == "student":
@@ -47,7 +47,6 @@ async def send_main_menu(message_or_call: Message | CallbackQuery, state: FSMCon
         menu = tutor_menu  # Меню для преподавателей
     else:
         menu = main_menu  # Основное меню для всех
-    await state.clear()
     if isinstance(message_or_call, Message):
         await message_or_call.answer("📚 Главное меню. Выберите действие:", reply_markup=menu)
     elif isinstance(message_or_call, CallbackQuery):
