@@ -8,7 +8,8 @@ from features.problem_solving import solve_problem
 from services import execute_query
 from states import FeedbackState
 from .main import send_main_menu
-from keyboards import generate_back_button, generate_feedback_keyboard, generate_tutor_keyboard, student_menu, \
+from keyboards import generate_back_button, generate_feedback_keyboard, generate_choosing_feedback_keyboard, \
+    generate_tutor_keyboard, student_menu, \
     main_menu, generate_confirm_booking_keyboard
 from utils import get_user_role
 
@@ -54,10 +55,15 @@ async def feedback_start(call: CallbackQuery, state: FSMContext):
         FROM bookings b
         JOIN tutors t ON b.tutor_id = t.id
         WHERE b.student_contact = (
-            SELECT student_contact
+            SELECT contact
             FROM students
             WHERE id = ?
-        ) AND b.status = 'approved'
+        )
+        AND b.status = 'approved'
+        AND NOT EXISTS (
+            SELECT 1 FROM feedback f
+            WHERE f.tutor_id = t.id AND f.student_contact = b.student_contact
+        )
     """, (call.from_user.id,), fetchall=True)
 
     if completed_bookings:
@@ -112,10 +118,22 @@ async def save_feedback(message: Message, state: FSMContext):
     tutor_id = data["tutor_id"]
     rating = data["rating"]
 
+    # Проверяем, существует ли уже отзыв от данного студента для этого преподавателя
+    existing_feedback = execute_query("""
+        SELECT id FROM feedback
+        WHERE tutor_id = ? AND student_contact = ?
+    """, (tutor_id, message.from_user.id), fetchone=True)
+
+    if existing_feedback:
+        await message.reply("❌ Вы уже оставили отзыв для этого преподавателя.")
+        await state.clear()
+        await send_main_menu(message)
+        return
+
     # Сохранение отзыва
     execute_query("""
-    INSERT INTO feedback (tutor_id, student_name, student_contact, rating, comment)
-    VALUES (?, ?, ?, ?, ?)
+        INSERT INTO feedback (tutor_id, student_name, student_contact, rating, comment)
+        VALUES (?, ?, ?, ?, ?)
     """, (tutor_id, message.from_user.full_name, message.from_user.id, rating, comment))
 
     # Обновление рейтинга преподавателя
@@ -127,8 +145,8 @@ async def save_feedback(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data == "view_feedback")
-async def view_feedback(call: CallbackQuery):
-    """Просмотр отзывов ученика."""
+async def view_feedback(call: CallbackQuery, state: FSMContext):
+    """Просмотр отзывов ученика с выбором отзыва."""
     user_role = get_user_role(call.from_user.id)
     if user_role != "student":
         await call.message.edit_text("❌ Доступ запрещён. Эта функция доступна только для студентов.")
@@ -139,32 +157,65 @@ async def view_feedback(call: CallbackQuery):
         SELECT f.id, t.name, f.rating, f.comment
         FROM feedback f
         JOIN tutors t ON f.tutor_id = t.id
-        WHERE f.student_contact = ?
+        WHERE f.student_contact = (
+            SELECT student_contact
+            FROM students
+            WHERE id = ?
+        )
     """, (call.from_user.id,), fetchall=True)
 
     if feedbacks:
-        response = "📝 Ваши отзывы:\n\n"
-        for feedback_id, tutor_name, rating, comment in feedbacks:
-            response += f"#{feedback_id}: {tutor_name}\n⭐ {rating}\nКомментарий: {comment}\n\n"
-            # Отправляем клавиатуру для изменения/удаления
-            await call.message.answer(response, reply_markup=generate_feedback_keyboard(feedback_id))
+        # Создаем клавиатуру для выбора отзыва
+        keyboard = generate_choosing_feedback_keyboard(feedbacks)
+
+        await call.message.edit_text("📝 Выберите отзыв, чтобы изменить или удалить:", reply_markup=keyboard)
+        await call.answer()
     else:
         await call.message.edit_text("❌ У вас пока нет отзывов.", reply_markup=generate_back_button())
-    await call.answer()
+        await call.answer()
 
 
-@router.callback_query(F.data.startswith("edit_feedback_"))
-async def edit_feedback(call: CallbackQuery, state: FSMContext):
-    """Редактирование отзыва через клавиатуру."""
-    feedback_id = call.data.split("_")[2]
+@router.callback_query(F.data.startswith("select_feedback_"))
+async def select_feedback(call: CallbackQuery, state: FSMContext):
+    """Выбор отзыва для дальнейших действий."""
+    feedback_id = int(call.data.split("_")[2])
     feedback = execute_query("""
-        SELECT id, tutor_id, comment
+        SELECT id, tutor_id, rating, comment
         FROM feedback
         WHERE id = ? AND student_contact = ?
     """, (feedback_id, call.from_user.id), fetchone=True)
 
     if feedback:
         await state.update_data(feedback_id=feedback[0], tutor_id=feedback[1])
+        # Генерация клавиатуры с действиями
+        action_keyboard = generate_feedback_keyboard(feedback_id)
+        await call.message.edit_text(
+            f"Отзыв:\n\n"
+            f"⭐ Рейтинг: {feedback[2]}\n"
+            f"💬 Комментарий: {feedback[3]}\n\n"
+            "Выберите действие:",
+            reply_markup=action_keyboard
+        )
+        await call.answer()
+    else:
+        await call.message.edit_text("❌ Отзыв не найден или у вас нет прав на его изменение.",
+                                     reply_markup=generate_back_button())
+        await call.answer()
+
+
+@router.callback_query(F.data.startswith("edit_feedback_"))
+async def edit_feedback(call: CallbackQuery, state: FSMContext):
+    """Редактирование отзыва через клавиатуру."""
+    feedback_id = call.data.split("_")[2]  # Извлечение ID отзыва
+    feedback = execute_query("""
+        SELECT id, tutor_id, rating, comment
+        FROM feedback
+        WHERE id = ? AND student_contact = ?
+    """, (feedback_id, call.from_user.id), fetchone=True)
+
+    if feedback:
+        await state.update_data(feedback_id=feedback[0], tutor_id=feedback[1])
+        await delete_feedback(call)
         await state.set_state(FeedbackState.waiting_for_rating)
         await call.message.edit_text("⭐ Укажите новый рейтинг (1-5):", reply_markup=generate_back_button())
     else:
@@ -175,7 +226,7 @@ async def edit_feedback(call: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("delete_feedback_"))
 async def delete_feedback(call: CallbackQuery):
     """Удаление отзыва через клавиатуру."""
-    feedback_id = call.data.split("_")[2]
+    feedback_id = call.data.split("_")[2]  # Извлечение ID отзыва
     feedback = execute_query("""
         SELECT id, tutor_id
         FROM feedback

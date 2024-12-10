@@ -90,7 +90,7 @@ def seed_mock_data():
         INSERT INTO bookings (tutor_id, student_name, student_contact, date, time, comment, status)
         VALUES
         (1, 'Иван Иванов', "ivan@example.com", '2024-12-09', '15:00', 'Подготовка к экзамену', 'approved'),
-        (2, 'Иван Иванов', "maria@example.com", '2024-12-10', '14:00', 'Подготовка к ЕГЭ', 'approved')
+        (2, 'Иван Иванов', "ivan@example.com", '2024-12-10', '14:00', 'Подготовка к ЕГЭ', 'approved')
     """)
 
     # Добавление отзывов

@@ -61,6 +61,21 @@ def generate_tutor_keyboard(tutors, only_id=False):
     return keyboard
 
 
+# Выбор отзыва
+def generate_choosing_feedback_keyboard(feedbacks):
+    kb = []
+    for feedback_id, tutor_name, rating, comment in feedbacks:
+        kb.append(
+            InlineKeyboardButton(
+                text=f"{tutor_name} (⭐ {rating}): {comment[:30]}...",
+                callback_data=f"select_feedback_{feedback_id}"
+            )
+        )
+    kb.append(InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu"))
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[kb], row_width=1)
+    return keyboard
+
+
 # Фильтры отзывов
 def generate_filter_reviews_keyboard():
     """Клавиатура для фильтрации отзывов."""
