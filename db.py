@@ -64,6 +64,13 @@ def init_db():
             FOREIGN KEY (tutor_id) REFERENCES tutors (id)
         )
         """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS    user_chat_ids (
+    user_id INTEGER PRIMARY KEY,
+    chat_id TEXT NOT NULL
+        )
+        """)
     conn.commit()
     conn.close()
 
