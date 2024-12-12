@@ -14,8 +14,17 @@ async def register_user(call: CallbackQuery, state: FSMContext):
     """
     Обработка кнопки "Зарегистрироваться".
     Проверяет, есть ли пользователь в БД, и отображает соответствующую информацию.
+    Также обновляет таблицу user_chat_ids с актуальным chat_id.
     """
     user_id = call.from_user.id
+    chat_id = call.message.chat.id  # Получаем chat_id
+
+    # Обновление таблицы user_chat_ids
+    execute_query("""
+        INSERT INTO user_chat_ids (user_id, chat_id)
+        VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET chat_id = excluded.chat_id
+    """, (user_id, chat_id))
 
     existing_admin = execute_query(
         "SELECT name FROM admins WHERE id = ?", (user_id,), fetchone=True
@@ -65,6 +74,10 @@ async def register_user(call: CallbackQuery, state: FSMContext):
             raise
 
 
+
+
+
+
 @router.callback_query(F.data.in_({"_student", "_tutor", "_admin"}))
 async def set_user_role(call: CallbackQuery, state: FSMContext):
     """Установка роли пользователя."""
@@ -109,24 +122,34 @@ async def set_tutor_subject(message: Message, state: FSMContext):
 
 @router.message(RegistrationState.waiting_for_contact)
 async def save_user_data(message: Message, state: FSMContext):
-    """Сохранение данных пользователя в базу."""
+    """Сохранение данных пользователя в базу и обновление таблицы user_chat_ids."""
     contact = message.text.strip()
     data = await state.get_data()
 
     role = data["role"]
     full_name = data["full_name"]
+    user_id = message.from_user.id
+    chat_id = message.chat.id  # Получаем chat_id
 
+    # Сохранение данных пользователя
     if role == "tutor":
         subject = data["subject"]
         execute_query("""
             INSERT INTO tutors (id, name, subject, contact)
             VALUES (?, ?, ?, ?)
-        """, (message.from_user.id, full_name, subject, contact))
+        """, (user_id, full_name, subject, contact))
     else:
         execute_query("""
             INSERT INTO students (id, full_name, contact)
             VALUES (?, ?, ?)
-        """, (message.from_user.id, full_name, contact))
+        """, (user_id, full_name, contact))
+
+    # Обновление таблицы user_chat_ids
+    execute_query("""
+        INSERT INTO user_chat_ids (user_id, chat_id)
+        VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET chat_id = excluded.chat_id
+    """, (user_id, chat_id))
 
     await state.clear()
     await message.reply(
